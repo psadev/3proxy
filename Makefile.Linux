@@ -35,7 +35,7 @@ MAKEFILE = Makefile.Linux
 #LIBS = -lcrypto -lssl -ldl 
 LIBS = -ldl 
 #PLUGINS = SSLPlugin StringsPlugin TrafficPlugin PCREPlugin TransparentPlugin PamAuth
-PLUGINS = StringsPlugin TrafficPlugin PCREPlugin TransparentPlugin
+PLUGINS = StringsPlugin TrafficPlugin PCREPlugin TransparentPlugin ScriptAuth
 
 include Makefile.inc
 

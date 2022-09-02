@@ -1,0 +1,3 @@
+[submodule "src/plugins/ScriptAuth"]
+	path = src/plugins/ScriptAuth
+	url = https://github.com/stranger169/ScriptAuth

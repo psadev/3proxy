@@ -1387,9 +1387,10 @@ static int h_authcache(int argc, unsigned char **argv){
 	if(strstr((char *) *(argv + 1), "ip")) conf.authcachetype |= 1;
 	if(strstr((char *) *(argv + 1), "user")) conf.authcachetype |= 2;
 	if(strstr((char *) *(argv + 1), "pass")) conf.authcachetype |= 4;
-	if(strstr((char *) *(argv + 1), "limit")) conf.authcachetype |= 8;
-	if(strstr((char *) *(argv + 1), "acl")) conf.authcachetype |= 16;
-	if(strstr((char *) *(argv + 1), "ext")) conf.authcachetype |= 32;
+	if(strstr((char *) *(argv + 1), "paddr")) conf.authcachetype |= 8; // was none
+	if(strstr((char *) *(argv + 1), "limit")) conf.authcachetype |= 16; // was 8
+	if(strstr((char *) *(argv + 1), "acl")) conf.authcachetype |= 32; // was 16
+	if(strstr((char *) *(argv + 1), "ext")) conf.authcachetype |= 64; // was 32
 	if(argc > 2) conf.authcachetime = (unsigned) atoi((char *) *(argv + 2));
 	if(!conf.authcachetype) conf.authcachetype = 6;
 	if(!conf.authcachetime) conf.authcachetime = 600;

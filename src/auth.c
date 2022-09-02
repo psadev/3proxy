@@ -746,6 +746,7 @@ int checkACL(struct clientparam * param){
 struct authcache {
 	char * username;
 	char * password;
+	char * proxy_addr;
 	time_t expires;
 #ifndef NOIPV6
 	struct sockaddr_in6 sa, sinsl;
@@ -759,11 +760,31 @@ struct authcache {
 int cacheauth(struct clientparam * param){
 	struct authcache *ac, *last=NULL;
 
+	// Get address info (proxy addr and target addr) 
+	int rc = 0;
+	struct sockaddr_in sa;
+	SASIZETYPE sasize = sizeof(sa);
+
+	char hoststr[NI_MAXHOST];
+	char portstr[NI_MAXSERV];
+
+	int rc0 = getsockname(param->clisock, (struct sockaddr *) &sa, &sasize);
+	int rc1 = getnameinfo(
+			(struct sockaddr *) &sa, 
+			sasize, 
+			hoststr, 
+			sizeof(hoststr), 
+			portstr, 
+			sizeof(portstr),
+			NI_NUMERICHOST | NI_NUMERICSERV
+	);
+
 	pthread_mutex_lock(&hash_mutex);
 	for(ac = authc; ac; ){
 		if(ac->expires <= conf.time){
 			if(ac->username)myfree(ac->username);
 			if(ac->password)myfree(ac->password);
+			if(ac->proxy_addr)myfree(ac->proxy_addr);
 			if(!last){
 				authc = ac->next;
 				myfree(ac);
@@ -780,14 +801,16 @@ int cacheauth(struct clientparam * param){
 		if(
 		 (!(conf.authcachetype&2) || (param->username && ac->username && !strcmp(ac->username, (char *)param->username))) &&
 		 (!(conf.authcachetype&4) || (ac->password && param->password && !strcmp(ac->password, (char *)param->password))) &&
-		 (!(conf.authcachetype&16) || (ac->acl == param->srv->acl))
+		 //  Check if authcachetype8 (paddr) is enabled, if so check that the cached proxy_addr matches the incoming one (hoststr)
+		 (!(conf.authcachetype&8) || (ac->proxy_addr && hoststr && !strcmp(ac->proxy_addr, (char *)hoststr))) &&
+		 (!(conf.authcachetype&32) || (ac->acl == param->srv->acl))
 		) {
 
 			if(!(conf.authcachetype&1)
 				|| ((*SAFAMILY(&ac->sa) ==  *SAFAMILY(&param->sincr) 
 				   && !memcmp(SAADDR(&ac->sa), SAADDR(&param->sincr), SAADDRLEN(&ac->sa))))){
 
-				if(conf.authcachetype&32) {
+				if(conf.authcachetype&64) {
 					param->sinsl = ac->sinsl;
 				}
 				if(param->username){
@@ -797,7 +820,7 @@ int cacheauth(struct clientparam * param){
 				pthread_mutex_unlock(&hash_mutex);
 				return 0;
 			}
-			else if ((conf.authcachetype&1) && (conf.authcachetype&8)) {
+			else if ((conf.authcachetype&1) && (conf.authcachetype&16)) {
 				pthread_mutex_unlock(&hash_mutex);
 				return 10;
 			}
@@ -817,6 +840,25 @@ int doauth(struct clientparam * param){
 	char * tmp;
 	int ret = 0;
 
+	// Get address info (proxy addr and target addr) 
+	int rc = 0;
+	struct sockaddr_in sa;
+	SASIZETYPE sasize = sizeof(sa);
+
+	char hoststr[NI_MAXHOST];
+	char portstr[NI_MAXSERV];
+
+	int rc0 = getsockname(param->clisock, (struct sockaddr *) &sa, &sasize);
+	int rc1 = getnameinfo(
+			(struct sockaddr *) &sa, 
+			sasize, 
+			hoststr, 
+			sizeof(hoststr), 
+			portstr, 
+			sizeof(portstr),
+			NI_NUMERICHOST | NI_NUMERICSERV
+	);
+
 	for(authfuncs=param->srv->authfuncs; authfuncs; authfuncs=authfuncs->next){
 		res = authfuncs->authenticate?(*authfuncs->authenticate)(param):0;
 		if(!res) {
@@ -830,7 +872,9 @@ int doauth(struct clientparam * param){
 					   (!(conf.authcachetype&2) || !strcmp(ac->username, (char *)param->username)) &&
 					   (!(conf.authcachetype&1) || (*SAFAMILY(&ac->sa) ==  *SAFAMILY(&param->sincr) && !memcmp(SAADDR(&ac->sa), SAADDR(&param->sincr), SAADDRLEN(&ac->sa))))  &&
 					   (!(conf.authcachetype&4) || (ac->password && !strcmp(ac->password, (char *)param->password))) &&
-					   (!(conf.authcachetype&16) || (ac->acl == param->srv->acl))
+						 //  Check if authcachetype8 (paddr) is enabled, if so check that the cached proxy_addr matches the incoming one (hoststr)
+					   (!(conf.authcachetype&8) || (ac->proxy_addr && !strcmp(ac->proxy_addr, (char *)hoststr))) &&
+					   (!(conf.authcachetype&32) || (ac->acl == param->srv->acl))
 					) {
 						ac->expires = conf.time + conf.authcachetime;
 						if(strcmp(ac->username, (char *)param->username)){
@@ -843,8 +887,14 @@ int doauth(struct clientparam * param){
 							ac->password = mystrdup((char *)param->password);
 							myfree(tmp);
 						}
+						// If the authcachetype8 (paddr) is enabled, insert the incoming proxy_addr (hoststr) into the cache proxy_addr field.
+						if((conf.authcachetype&8)) {
+							tmp = ac->proxy_addr;
+							ac->proxy_addr = mystrdup((char *)hoststr);
+							myfree(tmp);
+						}
 						ac->sa = param->sincr;
-						if(conf.authcachetype&32) {
+						if(conf.authcachetype&64) {
 							ac->sinsl = param-> sinsl;
 							*SAPORT(&ac->sinsl) = 0;
 						}
@@ -859,8 +909,11 @@ int doauth(struct clientparam * param){
 						ac->username = param->username?mystrdup((char *)param->username):NULL;
 						ac->sa = param->sincr;
 						ac->password = NULL;
+						ac->proxy_addr = NULL;
 						if((conf.authcachetype&4) && param->password) ac->password = mystrdup((char *)param->password);
-						if(conf.authcachetype&32) {
+						// If authcachetype&8 (paddr) is enabled and hoststr is available, set it inside the authcache (ac) struct
+						if((conf.authcachetype&8) && hoststr) ac->proxy_addr = mystrdup((char *)hoststr);
+						if(conf.authcachetype&64) {
 							ac->sinsl = param->sinsl;
 							*SAPORT(&ac->sinsl) = 0;
 						}

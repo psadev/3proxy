@@ -125,6 +125,12 @@ struct socketoptions sockopts[] = {
 #ifdef IP_TRANSPARENT
 	{IP_TRANSPARENT, "IP_TRANSPARENT"},
 #endif
+#ifdef TCP_FASTOPEN
+	{TCP_FASTOPEN, "TCP_FASTOPEN"},
+#endif
+#ifdef TCP_FASTOPEN_CONNECT
+	{TCP_FASTOPEN_CONNECT, "TCP_FASTOPEN_CONNECT"},
+#endif
 	{0, NULL}
 };
 
@@ -545,6 +551,8 @@ int MODULEMAINFUNC (int argc, char** argv){
  if(inetd) {
 	fcntl(0,F_SETFL,O_NONBLOCK | fcntl(0,F_GETFL));
 	if(!isudp){
+		lg.l_onoff = 1;
+		lg.l_linger = conf.timeouts[STRING_L];
 		so._setsockopt(0, SOL_SOCKET, SO_LINGER, (unsigned char *)&lg, sizeof(lg));
 		so._setsockopt(0, SOL_SOCKET, SO_OOBINLINE, (unsigned char *)&opt, sizeof(int));
 	}
@@ -586,8 +594,6 @@ int MODULEMAINFUNC (int argc, char** argv){
 	if(srv.srvsock == INVALID_SOCKET){
 
 		if(!isudp){
-			lg.l_onoff = 1;
-			lg.l_linger = conf.timeouts[STRING_L];
 			sock=so._socket(SASOCK(&srv.intsa), SOCK_STREAM, IPPROTO_TCP);
 		}
 		else {
@@ -643,7 +649,7 @@ int MODULEMAINFUNC (int argc, char** argv){
 		}
 	}
  	if(!isudp){
- 		if(so._listen (sock, 1 + (srv.maxchild>>4))==-1) {
+		if(so._listen (sock, srv.backlog?srv.backlog : 1+(srv.maxchild>>3))==-1) {
 			sprintf((char *)buf, "listen(): %s", strerror(errno));
 			if(!srv.silent)dolog(&defparam, buf);
 			return -4;
@@ -807,6 +813,9 @@ int MODULEMAINFUNC (int argc, char** argv){
 #else
 		fcntl(new_sock,F_SETFL,O_NONBLOCK | fcntl(new_sock,F_GETFL));
 #endif
+		lg.l_onoff = 1;
+		lg.l_linger = conf.timeouts[STRING_L];
+
 		so._setsockopt(new_sock, SOL_SOCKET, SO_LINGER, (char *)&lg, sizeof(lg));
 		so._setsockopt(new_sock, SOL_SOCKET, SO_OOBINLINE, (char *)&opt, sizeof(int));
 	}
@@ -911,6 +920,7 @@ void srvinit(struct srvparam * srv, struct clientparam *param){
  srv->authfunc = conf.authfunc;
  srv->usentlm = 0;
  srv->maxchild = conf.maxchild;
+ srv->backlog = conf.backlog;
  srv->stacksize = conf.stacksize;
  srv->time_start = time(NULL);
  if(havelog && conf.logtarget){

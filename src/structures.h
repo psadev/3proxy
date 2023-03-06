@@ -183,7 +183,8 @@ typedef enum {
 	S_SMTPP,
 	S_REVLI,
 	S_REVCO,
-	S_ZOMBIE
+	S_ZOMBIE,
+	S_AUTO
 }PROXYSERVICE;
 
 struct clientparam;
@@ -428,6 +429,7 @@ struct srvparam {
 	SOCKET srvsock, cbsock;
 	int childcount;
 	int maxchild;
+	int backlog;
 	int paused, version;
 	int singlepacket;
 	int usentlm;
@@ -577,7 +579,7 @@ struct extparam {
 	struct srvparam *services;
 	int stacksize,
 		threadinit, counterd, haveerror, rotate, paused, archiverc,
-		demon, maxchild, needreload, timetoexit, version, noforce, bandlimver, parentretries;
+		demon, maxchild, backlog, needreload, timetoexit, version, noforce, bandlimver, parentretries;
 	int authcachetype, authcachetime;
 	int filtermaxsize;
 	int gracetraf, gracenum, gracedelay;
